@@ -18,11 +18,11 @@ $error = '';
 
 // Get project
 $stmt = $conn->prepare("
-    SELECT p.*, s.name as service_name, s.features,
+    SELECT p.*, COALESCE(p.service_name, s.name) as service_display, s.features,
            c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
            a.name as assigned_name
     FROM projects p 
-    JOIN services s ON p.service_id = s.id 
+    LEFT JOIN services s ON p.service_id = s.id 
     JOIN users c ON p.customer_id = c.id 
     LEFT JOIN users a ON p.assigned_to = a.id
     WHERE p.id = ?
@@ -32,6 +32,52 @@ $project = $stmt->fetch();
 
 if (!$project) {
     redirect('/dashboard/projects.php');
+}
+
+// Handle project update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
+    if (hasRole([ROLE_CEO, ROLE_MANAGER])) {
+        $title = sanitize($_POST['title']);
+        $serviceName = sanitize($_POST['service_name']);
+        $description = sanitize($_POST['description']);
+        $requirements = sanitize($_POST['requirements']);
+        $dueDate = sanitize($_POST['due_date']);
+        $status = sanitize($_POST['status']);
+        $assignedTo = !empty($_POST['assigned_to']) ? intval($_POST['assigned_to']) : null;
+        
+        $stmt = $conn->prepare("
+            UPDATE projects SET 
+                title = ?, 
+                service_name = ?, 
+                description = ?, 
+                requirements = ?, 
+                due_date = ?, 
+                status = ?,
+                assigned_to = ?,
+                start_date = CASE WHEN start_date IS NULL AND ? = 'in_progress' THEN CURDATE() ELSE start_date END,
+                completed_date = CASE WHEN ? = 'completed' THEN CURDATE() ELSE NULL END
+            WHERE id = ?
+        ");
+        
+        if ($stmt->execute([$title, $serviceName, $description, $requirements, $dueDate, $status, $assignedTo, $status, $status, $projectId])) {
+            $success = 'Project updated successfully';
+            // Refresh project data
+            $stmt = $conn->prepare("
+                SELECT p.*, COALESCE(p.service_name, s.name) as service_display, s.features,
+                       c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
+                       a.name as assigned_name
+                FROM projects p 
+                LEFT JOIN services s ON p.service_id = s.id 
+                JOIN users c ON p.customer_id = c.id 
+                LEFT JOIN users a ON p.assigned_to = a.id
+                WHERE p.id = ?
+            ");
+            $stmt->execute([$projectId]);
+            $project = $stmt->fetch();
+        } else {
+            $error = 'Failed to update project';
+        }
+    }
 }
 
 // Handle task creation
@@ -76,7 +122,7 @@ $stmt = $conn->prepare("
 $stmt->execute([$projectId]);
 $tasks = $stmt->fetchAll();
 
-// Get payments
+// Get payments (kept for legacy but not displayed)
 $stmt = $conn->prepare("SELECT * FROM payments WHERE project_id = ? ORDER BY created_at DESC");
 $stmt->execute([$projectId]);
 $payments = $stmt->fetchAll();
@@ -110,6 +156,12 @@ require_once __DIR__ . '/../includes/header.php';
                     <h1 class="text-2xl font-bold text-gray-800"><?= htmlspecialchars($project['title']) ?></h1>
                     <p class="text-gray-500 font-mono"><?= $project['reference'] ?></p>
                 </div>
+                <div class="flex items-center space-x-2">
+                    <?php if (hasRole([ROLE_CEO, ROLE_MANAGER])): ?>
+                    <button onclick="openEditModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+                        <i class="fas fa-edit mr-1"></i>Edit Project
+                    </button>
+                    <?php endif; ?>
                 <?php
                 $statusColors = [
                     'pending' => 'bg-yellow-100 text-yellow-800',
@@ -122,14 +174,15 @@ require_once __DIR__ . '/../includes/header.php';
                 $color = $statusColors[$project['status']] ?? 'bg-gray-100 text-gray-800';
                 ?>
                 <span class="px-4 py-2 rounded-full text-sm font-medium <?= $color ?>">
-                    <?= ucfirst(str_replace('_', ' ', $project['status'])) ?>
-                </span>
+                        <?= ucfirst(str_replace('_', ' ', $project['status'])) ?>
+                    </span>
+                </div>
             </div>
             
             <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>
                     <p class="text-gray-500">Service</p>
-                    <p class="font-medium"><?= htmlspecialchars($project['service_name']) ?></p>
+                    <p class="font-medium"><?= htmlspecialchars($project['service_display'] ?? '-') ?></p>
                 </div>
                 <div>
                     <p class="text-gray-500">Assigned To</p>
@@ -233,40 +286,6 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
         </div>
         
-        <!-- Payment Info -->
-        <div class="bg-white rounded-xl shadow-md p-6">
-            <h2 class="font-bold text-gray-800 mb-4">Payment</h2>
-            <div class="space-y-3">
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Total</span>
-                    <span class="font-semibold"><?= formatCurrency($project['total_amount']) ?></span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Paid</span>
-                    <span class="font-semibold text-green-600"><?= formatCurrency($project['paid_amount']) ?></span>
-                </div>
-                <div class="border-t pt-3 flex justify-between">
-                    <span class="font-semibold">Balance</span>
-                    <span class="font-bold text-primary"><?= formatCurrency($project['total_amount'] - $project['paid_amount']) ?></span>
-                </div>
-            </div>
-            
-            <?php if (!empty($payments)): ?>
-            <div class="mt-4 pt-4 border-t">
-                <p class="text-sm font-medium text-gray-700 mb-2">Payment History</p>
-                <div class="space-y-2">
-                    <?php foreach ($payments as $payment): ?>
-                    <div class="text-sm">
-                        <div class="flex justify-between">
-                            <span><?= formatCurrency($payment['amount']) ?></span>
-                            <span class="text-gray-500"><?= formatDate($payment['payment_date']) ?></span>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
-        </div>
     </div>
 </div>
 
@@ -318,5 +337,75 @@ require_once __DIR__ . '/../includes/header.php';
         </form>
     </div>
 </div>
+
+<!-- Edit Project Modal -->
+<div id="editModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
+    <div class="bg-white rounded-xl p-6 w-full max-w-2xl my-8 mx-4">
+        <h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-blue-600 mr-2"></i>Edit Project</h3>
+        <form method="POST">
+            <input type="hidden" name="update_project" value="1">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Project Title *</label>
+                    <input type="text" name="title" required class="w-full px-4 py-2 border rounded-lg" value="<?= htmlspecialchars($project['title']) ?>">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Service/Product</label>
+                    <input type="text" name="service_name" class="w-full px-4 py-2 border rounded-lg" value="<?= htmlspecialchars($project['service_name'] ?? $project['service_display'] ?? '') ?>">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Due Date *</label>
+                    <input type="date" name="due_date" required class="w-full px-4 py-2 border rounded-lg" value="<?= $project['due_date'] ?>">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                    <select name="status" class="w-full px-4 py-2 border rounded-lg">
+                        <option value="pending" <?= $project['status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
+                        <option value="payment_received" <?= $project['status'] === 'payment_received' ? 'selected' : '' ?>>Payment Received</option>
+                        <option value="in_progress" <?= $project['status'] === 'in_progress' ? 'selected' : '' ?>>In Progress</option>
+                        <option value="review" <?= $project['status'] === 'review' ? 'selected' : '' ?>>Under Review</option>
+                        <option value="completed" <?= $project['status'] === 'completed' ? 'selected' : '' ?>>Completed</option>
+                        <option value="cancelled" <?= $project['status'] === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
+                <select name="assigned_to" class="w-full px-4 py-2 border rounded-lg">
+                    <option value="">Unassigned</option>
+                    <?php foreach ($staff as $member): ?>
+                    <option value="<?= $member['id'] ?>" <?= $project['assigned_to'] == $member['id'] ? 'selected' : '' ?>><?= htmlspecialchars($member['name']) ?> (<?= ucfirst(str_replace('_', ' ', $member['role'])) ?>)</option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea name="description" rows="3" class="w-full px-4 py-2 border rounded-lg"><?= htmlspecialchars($project['description'] ?? '') ?></textarea>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Requirements</label>
+                <textarea name="requirements" rows="3" class="w-full px-4 py-2 border rounded-lg"><?= htmlspecialchars($project['requirements'] ?? '') ?></textarea>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><i class="fas fa-save mr-2"></i>Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openEditModal() {
+    document.getElementById('editModal').classList.remove('hidden');
+    document.getElementById('editModal').classList.add('flex');
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').classList.add('hidden');
+    document.getElementById('editModal').classList.remove('flex');
+}
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

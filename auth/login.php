@@ -109,27 +109,6 @@ require_once __DIR__ . '/../includes/header.php';
                 </p>
             </div>
             
-            <div class="mt-8 pt-6 border-t border-gray-200">
-                <p class="text-sm text-gray-500 text-center mb-4">Demo Accounts:</p>
-                <div class="grid grid-cols-1 gap-2 text-xs text-gray-600">
-                    <div class="bg-yellow-50 border border-yellow-200 p-2 rounded flex justify-between">
-                        <span><strong class="text-yellow-700">Super Admin:</strong> phidtechnology@gmail.com</span>
-                        <span class="text-yellow-700 font-medium">Dyna@@5006</span>
-                    </div>
-                    <div class="bg-gray-50 p-2 rounded flex justify-between">
-                        <span><strong>CEO:</strong> admin@phidtech.com</span>
-                        <span>admin123</span>
-                    </div>
-                    <div class="bg-gray-50 p-2 rounded flex justify-between">
-                        <span><strong>Manager:</strong> manager@phidtech.com</span>
-                        <span>manager123</span>
-                    </div>
-                    <div class="bg-gray-50 p-2 rounded flex justify-between">
-                        <span><strong>Accountant:</strong> accountant@phidtech.com</span>
-                        <span>acc123</span>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>

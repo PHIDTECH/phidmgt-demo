@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <div class="ml-4">
                             <h3 class="font-semibold text-gray-800">Address</h3>
-                            <p class="text-gray-600">Dar es Salaam, Tanzania<br>Mikocheni B, Ali Hassan Mwinyi Road</p>
+                            <p class="text-gray-600">Your Business Address<br>City, Country</p>
                         </div>
                     </div>
                     <div class="flex items-start">
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <div class="ml-4">
                             <h3 class="font-semibold text-gray-800">Phone</h3>
-                            <p class="text-gray-600">+255 700 000 000<br>+255 222 000 000</p>
+                            <p class="text-gray-600">+255 700 000 000</p>
                         </div>
                     </div>
                     <div class="flex items-start">
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <div class="ml-4">
                             <h3 class="font-semibold text-gray-800">Email</h3>
-                            <p class="text-gray-600">info@phidtech.com<br>support@phidtech.com</p>
+                            <p class="text-gray-600">info@yourdomain.com<br>support@yourdomain.com</p>
                         </div>
                     </div>
                     <div class="flex items-start">

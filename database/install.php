@@ -287,14 +287,14 @@ try {
     
     // Insert default users with proper password hashes
     $users = [
-        ['Super Admin', 'phidtechnology@gmail.com', 'Dyna@@5006', '+255700000000', 'superadmin', 'Administration', 0],
-        ['John Mwamba', 'admin@phidtech.com', 'admin123', '+255700000001', 'ceo', 'Executive', 5000000],
-        ['Sarah Kimaro', 'manager@phidtech.com', 'manager123', '+255700000002', 'manager', 'Operations', 3000000],
-        ['Peter Msemwa', 'accountant@phidtech.com', 'acc123', '+255700000003', 'accountant', 'Finance', 2500000],
-        ['Grace Mushi', 'hr@phidtech.com', 'hr123', '+255700000004', 'hr', 'Human Resources', 2500000],
-        ['James Njau', 'supervisor@phidtech.com', 'super123', '+255700000005', 'supervisor', 'IT', 2000000],
-        ['Alice Kapinga', 'it@phidtech.com', 'it123', '+255700000006', 'it_staff', 'IT', 1500000],
-        ['Michael Swai', 'junior@phidtech.com', 'junior123', '+255700000007', 'junior_staff', 'IT', 800000],
+        ['Super Admin', 'admin@yourdomain.com', 'admin123', '+255700000000', 'superadmin', 'Administration', 0],
+        ['Sample CEO', 'ceo@example.com', 'demo123', '+255700000001', 'ceo', 'Executive', 5000000],
+        ['Sample Manager', 'manager@example.com', 'demo123', '+255700000002', 'manager', 'Operations', 3000000],
+        ['Sample Accountant', 'accountant@example.com', 'demo123', '+255700000003', 'accountant', 'Finance', 2500000],
+        ['Sample HR', 'hr@example.com', 'demo123', '+255700000004', 'hr', 'Human Resources', 2500000],
+        ['Sample Supervisor', 'supervisor@example.com', 'demo123', '+255700000005', 'supervisor', 'IT', 2000000],
+        ['Sample IT Staff', 'itstaff@example.com', 'demo123', '+255700000006', 'it_staff', 'IT', 1500000],
+        ['Sample Junior', 'junior@example.com', 'demo123', '+255700000007', 'junior_staff', 'IT', 800000],
     ];
     
     $stmt = $pdo->prepare("INSERT INTO users (name, email, password, phone, role, department, salary) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -381,14 +381,14 @@ try {
     echo "<h3>Default Login Credentials</h3>";
     echo "<table>";
     echo "<tr><th>Role</th><th>Email</th><th>Password</th></tr>";
-    echo "<tr style='background:#fef3c7;'><td><strong>Super Admin</strong></td><td><strong>phidtechnology@gmail.com</strong></td><td><strong>Dyna@@5006</strong></td></tr>";
-    echo "<tr><td>CEO</td><td>admin@phidtech.com</td><td>admin123</td></tr>";
-    echo "<tr><td>Manager</td><td>manager@phidtech.com</td><td>manager123</td></tr>";
-    echo "<tr><td>Accountant</td><td>accountant@phidtech.com</td><td>acc123</td></tr>";
-    echo "<tr><td>HR</td><td>hr@phidtech.com</td><td>hr123</td></tr>";
-    echo "<tr><td>Supervisor</td><td>supervisor@phidtech.com</td><td>super123</td></tr>";
-    echo "<tr><td>IT Staff</td><td>it@phidtech.com</td><td>it123</td></tr>";
-    echo "<tr><td>Junior Staff</td><td>junior@phidtech.com</td><td>junior123</td></tr>";
+    echo "<tr style='background:#fef3c7;'><td><strong>Super Admin</strong></td><td><strong>admin@yourdomain.com</strong></td><td><strong>admin123</strong></td></tr>";
+    echo "<tr><td>CEO</td><td>ceo@example.com</td><td>demo123</td></tr>";
+    echo "<tr><td>Manager</td><td>manager@example.com</td><td>demo123</td></tr>";
+    echo "<tr><td>Accountant</td><td>accountant@example.com</td><td>demo123</td></tr>";
+    echo "<tr><td>HR</td><td>hr@example.com</td><td>demo123</td></tr>";
+    echo "<tr><td>Supervisor</td><td>supervisor@example.com</td><td>demo123</td></tr>";
+    echo "<tr><td>IT Staff</td><td>itstaff@example.com</td><td>demo123</td></tr>";
+    echo "<tr><td>Junior Staff</td><td>junior@example.com</td><td>demo123</td></tr>";
     echo "</table>";
     
     echo "<br><a href='../' class='btn'>Go to Homepage</a>";

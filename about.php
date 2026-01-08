@@ -5,9 +5,9 @@ require_once __DIR__ . '/includes/header.php';
 
 <section class="bg-gradient-to-br from-primary to-secondary text-white py-16">
     <div class="max-w-7xl mx-auto px-4 text-center">
-        <h1 class="text-4xl font-bold mb-4">About PhidTech Solutions</h1>
+        <h1 class="text-4xl font-bold mb-4">About <?= SITE_NAME ?></h1>
         <p class="text-xl text-blue-100 max-w-2xl mx-auto">
-            Your trusted partner for innovative digital solutions in Tanzania
+            Your trusted partner for professional services and solutions
         </p>
     </div>
 </section>
@@ -18,7 +18,7 @@ require_once __DIR__ . '/includes/header.php';
             <div>
                 <h2 class="text-3xl font-bold text-gray-800 mb-6">Our Story</h2>
                 <p class="text-gray-600 mb-4">
-                    PhidTech Solutions was founded with a vision to bridge the digital gap for businesses in Tanzania and East Africa. We believe every business, regardless of size, deserves access to world-class digital solutions.
+                    Our company was founded with a vision to deliver exceptional services to our clients. We believe every business, regardless of size, deserves access to world-class solutions.
                 </p>
                 <p class="text-gray-600 mb-4">
                     Our team of experienced developers, designers, and digital strategists work tirelessly to deliver innovative solutions that drive business growth and success.

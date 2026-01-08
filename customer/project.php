@@ -45,6 +45,37 @@ $progressPercent = $taskProgress['total'] > 0
     ? round(($taskProgress['completed'] / $taskProgress['total']) * 100) 
     : 0;
 
+// Get all tasks for this project (for customer to see status)
+$stmt = $conn->prepare("
+    SELECT t.id, t.title, t.status, t.priority, t.due_date, u.name as assigned_name
+    FROM tasks t
+    LEFT JOIN users u ON t.assigned_to = u.id
+    WHERE t.project_id = ?
+    ORDER BY FIELD(t.status, 'in_progress', 'pending', 'submitted', 'approved', 'rejected'), t.due_date
+");
+$stmt->execute([$projectId]);
+$projectTasks = $stmt->fetchAll();
+
+// Get assigned staff for this project's tasks
+$stmt = $conn->prepare("
+    SELECT DISTINCT u.id, u.name, u.email, u.role, t.title as task_title, t.status as task_status
+    FROM tasks t
+    JOIN users u ON t.assigned_to = u.id
+    WHERE t.project_id = ?
+    ORDER BY u.name
+");
+$stmt->execute([$projectId]);
+$assignedStaff = $stmt->fetchAll();
+
+// Get key contacts (Manager, CEO, Accountant) for customer to contact
+$stmt = $conn->query("
+    SELECT id, name, email, role 
+    FROM users 
+    WHERE role IN ('ceo', 'manager', 'accountant') AND status = 'active'
+    ORDER BY FIELD(role, 'manager', 'accountant', 'ceo')
+");
+$keyContacts = $stmt->fetchAll();
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -115,6 +146,51 @@ require_once __DIR__ . '/../includes/header.php';
                     <?= $taskProgress['completed'] ?> of <?= $taskProgress['total'] ?> tasks completed
                 </p>
             </div>
+            
+            <!-- Task Status -->
+            <?php if (!empty($projectTasks)): ?>
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-tasks text-primary mr-2"></i>Task Status</h2>
+                <div class="space-y-3">
+                    <?php foreach ($projectTasks as $task): ?>
+                    <?php
+                    $taskStatusColors = [
+                        'pending' => 'bg-yellow-100 text-yellow-800',
+                        'in_progress' => 'bg-blue-100 text-blue-800',
+                        'submitted' => 'bg-purple-100 text-purple-800',
+                        'approved' => 'bg-green-100 text-green-800',
+                        'rejected' => 'bg-red-100 text-red-800'
+                    ];
+                    $taskStatusLabels = [
+                        'pending' => 'Pending',
+                        'in_progress' => 'In Progress',
+                        'submitted' => 'Under Review',
+                        'approved' => 'Completed',
+                        'rejected' => 'Needs Revision'
+                    ];
+                    $taskColor = $taskStatusColors[$task['status']] ?? 'bg-gray-100 text-gray-800';
+                    $taskLabel = $taskStatusLabels[$task['status']] ?? ucfirst($task['status']);
+                    ?>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex-1">
+                            <p class="font-medium text-gray-800"><?= htmlspecialchars($task['title']) ?></p>
+                            <p class="text-xs text-gray-500">
+                                <?php if ($task['assigned_name']): ?>
+                                    <i class="fas fa-user mr-1"></i><?= htmlspecialchars($task['assigned_name']) ?>
+                                <?php endif; ?>
+                                <?php if ($task['due_date']): ?>
+                                    <span class="ml-2"><i class="fas fa-calendar mr-1"></i><?= formatDate($task['due_date']) ?></span>
+                                <?php endif; ?>
+                            </p>
+                        </div>
+                        <span class="px-3 py-1 rounded-full text-xs font-medium <?= $taskColor ?>">
+                            <?= $taskLabel ?>
+                        </span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
             
             <!-- Payments History -->
             <div class="bg-white rounded-xl shadow-md p-6">
@@ -216,8 +292,106 @@ require_once __DIR__ . '/../includes/header.php';
                 </ul>
             </div>
             <?php endif; ?>
+            
+            <!-- Team Working on Your Project -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-users text-primary mr-2"></i>Project Team</h2>
+                
+                <?php if (!empty($assignedStaff)): ?>
+                <div class="space-y-3 mb-4">
+                    <p class="text-sm text-gray-500 mb-2">Staff assigned to your project:</p>
+                    <?php foreach ($assignedStaff as $staff): ?>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center font-bold mr-3">
+                                <?= strtoupper(substr($staff['name'], 0, 1)) ?>
+                            </div>
+                            <div>
+                                <p class="font-medium text-gray-800"><?= htmlspecialchars($staff['name']) ?></p>
+                                <p class="text-xs text-gray-500"><?= ucfirst(str_replace('_', ' ', $staff['role'])) ?> • <?= htmlspecialchars($staff['task_title']) ?></p>
+                            </div>
+                        </div>
+                        <button onclick="openChatModal(<?= $staff['id'] ?>, '<?= htmlspecialchars($staff['name'], ENT_QUOTES) ?>')" 
+                                class="text-primary hover:text-secondary text-sm">
+                            <i class="fas fa-comment-dots"></i>
+                        </button>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php else: ?>
+                <p class="text-gray-500 text-sm mb-4">No staff assigned yet</p>
+                <?php endif; ?>
+                
+                <!-- Key Contacts -->
+                <div class="border-t pt-4">
+                    <p class="text-sm text-gray-500 mb-2">Contact Management:</p>
+                    <div class="space-y-2">
+                        <?php foreach ($keyContacts as $contact): ?>
+                        <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg">
+                            <div class="flex items-center">
+                                <div class="w-8 h-8 bg-secondary text-white rounded-full flex items-center justify-center text-sm font-bold mr-2">
+                                    <?= strtoupper(substr($contact['name'], 0, 1)) ?>
+                                </div>
+                                <div>
+                                    <p class="font-medium text-sm"><?= htmlspecialchars($contact['name']) ?></p>
+                                    <p class="text-xs text-gray-500"><?= ucfirst($contact['role']) ?></p>
+                                </div>
+                            </div>
+                            <button onclick="openChatModal(<?= $contact['id'] ?>, '<?= htmlspecialchars($contact['name'], ENT_QUOTES) ?>')" 
+                                    class="bg-primary text-white px-3 py-1 rounded text-xs hover:bg-secondary">
+                                <i class="fas fa-envelope mr-1"></i>Message
+                            </button>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Chat Modal -->
+<div id="chatModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-full max-w-lg mx-4">
+        <h3 class="text-lg font-bold mb-4"><i class="fas fa-comment text-primary mr-2"></i>Send Message to <span id="chatRecipientName"></span></h3>
+        <form method="POST" action="<?= SITE_URL ?>/customer/messages.php">
+            <input type="hidden" name="send_message" value="1">
+            <input type="hidden" name="recipient_id" id="chatRecipientId">
+            <input type="hidden" name="return_url" value="<?= SITE_URL ?>/customer/project.php?id=<?= $projectId ?>">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Subject *</label>
+                    <input type="text" name="subject" required class="w-full px-4 py-2 border rounded-lg" 
+                           value="Re: Project <?= htmlspecialchars($project['reference']) ?>">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message *</label>
+                    <textarea name="message" required rows="4" class="w-full px-4 py-2 border rounded-lg" 
+                              placeholder="Type your message here..."></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 mt-6">
+                <button type="button" onclick="closeChatModal()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-secondary">
+                    <i class="fas fa-paper-plane mr-1"></i>Send
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openChatModal(recipientId, recipientName) {
+    document.getElementById('chatRecipientId').value = recipientId;
+    document.getElementById('chatRecipientName').textContent = recipientName;
+    document.getElementById('chatModal').classList.remove('hidden');
+    document.getElementById('chatModal').classList.add('flex');
+}
+
+function closeChatModal() {
+    document.getElementById('chatModal').classList.add('hidden');
+    document.getElementById('chatModal').classList.remove('flex');
+}
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

@@ -22,9 +22,14 @@ $stmt = $conn->query("SELECT
 FROM projects");
 $projectStats = $stmt->fetch();
 
-// Revenue stats (this month)
-$stmt = $conn->query("SELECT COALESCE(SUM(amount), 0) as total FROM revenue WHERE MONTH(date) = MONTH(CURDATE()) AND YEAR(date) = YEAR(CURDATE())");
-$monthlyRevenue = $stmt->fetchColumn();
+// Revenue stats (this month) - from revenue table + customer payments
+$stmt = $conn->query("SELECT COALESCE(SUM(amount), 0) FROM revenue WHERE MONTH(date) = MONTH(CURDATE()) AND YEAR(date) = YEAR(CURDATE())");
+$revenueTableTotal = $stmt->fetchColumn();
+
+$stmt = $conn->query("SELECT COALESCE(SUM(paid_amount), 0) FROM users WHERE role = 'customer'");
+$customerPaymentsTotal = $stmt->fetchColumn();
+
+$monthlyRevenue = $revenueTableTotal + $customerPaymentsTotal;
 
 // Pending tasks for current user
 $stmt = $conn->prepare("SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status NOT IN ('approved', 'rejected')");
@@ -45,13 +50,13 @@ $stmt = $conn->query("
 ");
 $recentProjects = $stmt->fetchAll();
 
-// Recent payments
+// Recent payments - from customer paid_amount
 $stmt = $conn->query("
-    SELECT pay.*, p.title as project_title, p.reference as project_ref
-    FROM payments pay
-    JOIN projects p ON pay.project_id = p.id
-    WHERE pay.status = 'completed'
-    ORDER BY pay.created_at DESC LIMIT 5
+    SELECT u.id, u.name as customer_name, u.email as customer_email,
+           u.paid_amount as amount, u.created_at as payment_date
+    FROM users u
+    WHERE u.role = 'customer' AND u.paid_amount > 0
+    ORDER BY u.created_at DESC LIMIT 5
 ");
 $recentPayments = $stmt->fetchAll();
 
@@ -215,12 +220,18 @@ require_once __DIR__ . '/../includes/header.php';
             <a href="<?= SITE_URL ?>/dashboard/accounting/revenue.php" class="text-sm text-primary hover:underline">View All</a>
         </div>
         <div class="divide-y">
+            <?php if (empty($recentPayments)): ?>
+            <div class="p-8 text-center text-gray-500">
+                <i class="fas fa-money-bill-wave text-4xl text-gray-300 mb-2"></i>
+                <p>No customer payments yet</p>
+            </div>
+            <?php else: ?>
             <?php foreach ($recentPayments as $payment): ?>
             <div class="p-4 hover:bg-gray-50">
                 <div class="flex justify-between items-center">
                     <div>
-                        <p class="font-medium text-gray-800"><?= htmlspecialchars($payment['project_title']) ?></p>
-                        <p class="text-sm text-gray-500"><?= $payment['project_ref'] ?></p>
+                        <p class="font-medium text-gray-800"><?= htmlspecialchars($payment['customer_name']) ?></p>
+                        <p class="text-sm text-gray-500"><?= htmlspecialchars($payment['customer_email']) ?></p>
                     </div>
                     <div class="text-right">
                         <p class="font-semibold text-green-600"><?= formatCurrency($payment['amount']) ?></p>
@@ -229,6 +240,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
             <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
     <?php endif; ?>

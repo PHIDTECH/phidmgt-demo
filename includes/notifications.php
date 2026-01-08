@@ -37,15 +37,15 @@ class NotificationService {
         }
     }
     
-    // Payment received notification
+    // Payment received notification - Only CEO, Manager, Accountant can see
     public function notifyPaymentReceived($project, $payment, $customer) {
         $subject = "Payment Received - {$project['reference']}";
         $message = "Payment of " . formatCurrency($payment['amount']) . " has been received for project '{$project['title']}' from {$customer['name']}.";
         
-        // Notify CEO and Accountant
-        $this->sendToRoles([ROLE_CEO, ROLE_ACCOUNTANT], $subject, $message, 'payment', 'payment', $payment['id']);
+        // Notify CEO, Manager and Accountant ONLY
+        $this->sendToRoles([ROLE_CEO, ROLE_MANAGER, ROLE_ACCOUNTANT], $subject, $message, 'payment', 'payment', $payment['id']);
         
-        // Notify Customer
+        // Notify Customer about their own payment
         $customerMsg = "Your payment of " . formatCurrency($payment['amount']) . " for '{$project['title']}' has been received. Thank you!";
         $this->send($customer['id'], "Payment Confirmed - {$project['reference']}", $customerMsg, 'payment', 'payment', $payment['id']);
     }
@@ -89,10 +89,10 @@ class NotificationService {
     public function notifyLeaveApplied($leave, $applicant) {
         $subject = "Leave Application - {$applicant['name']}";
         $days = $leave['days'];
-        $message = "{$applicant['name']} has applied for {$leave['leave_type']} leave for {$days} day(s) from " . formatDate($leave['start_date']) . " to " . formatDate($leave['end_date']) . ".";
+        $message = "{$applicant['name']} has applied for {$leave['leave_type']} leave for {$days} day(s) from " . formatDate($leave['start_date']) . " to " . formatDate($leave['end_date']) . ". Reason: " . ($leave['reason'] ?: 'Not specified');
         
-        // Notify HR and Manager
-        $this->sendToRoles([ROLE_HR, ROLE_MANAGER], $subject, $message, 'leave', 'leave', $leave['id'], $applicant['id']);
+        // Notify Manager and CEO
+        $this->sendToRoles([ROLE_MANAGER, ROLE_CEO], $subject, $message, 'leave', 'leave', $leave['id'], $applicant['id']);
     }
     
     // Leave approved/rejected notification
@@ -121,18 +121,40 @@ class NotificationService {
     }
     
     // Get messages for user
-    public function getMessages($userId, $limit = 50, $unreadOnly = false) {
-        $sql = "SELECT m.*, u.name as sender_name 
-                FROM messages m 
-                LEFT JOIN users u ON m.sender_id = u.id 
-                WHERE m.recipient_id = ?";
-        if ($unreadOnly) {
-            $sql .= " AND m.is_read = 0";
-        }
-        $sql .= " ORDER BY m.created_at DESC LIMIT ?";
+    // Private chats (type='chat' or 'general') only visible to sender/recipient
+    // Admin (CEO) can see all messages
+    public function getMessages($userId, $limit = 50, $unreadOnly = false, $userRole = null) {
+        $limit = intval($limit);
         
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([$userId, $limit]);
+        // Check if user is admin (CEO) - can see all messages
+        $isAdmin = ($userRole === ROLE_CEO);
+        
+        if ($isAdmin) {
+            // Admin can see ALL messages
+            $sql = "SELECT m.*, u.name as sender_name, r.name as recipient_name
+                    FROM messages m 
+                    LEFT JOIN users u ON m.sender_id = u.id 
+                    LEFT JOIN users r ON m.recipient_id = r.id";
+            if ($unreadOnly) {
+                $sql .= " WHERE m.is_read = 0";
+            }
+            $sql .= " ORDER BY m.created_at DESC LIMIT " . $limit;
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute();
+        } else {
+            // Regular users only see messages where they are sender or recipient
+            $sql = "SELECT m.*, u.name as sender_name 
+                    FROM messages m 
+                    LEFT JOIN users u ON m.sender_id = u.id 
+                    WHERE (m.recipient_id = ? OR m.sender_id = ?)";
+            if ($unreadOnly) {
+                $sql .= " AND m.is_read = 0";
+            }
+            $sql .= " ORDER BY m.created_at DESC LIMIT " . $limit;
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute([$userId, $userId]);
+        }
+        
         return $stmt->fetchAll();
     }
     

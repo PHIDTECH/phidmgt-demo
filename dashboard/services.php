@@ -27,6 +27,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_service'])) {
     }
 }
 
+// Handle edit service
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_service'])) {
+    $serviceId = intval($_POST['service_id']);
+    $name = sanitize($_POST['name']);
+    $description = sanitize($_POST['description']);
+    $category = sanitize($_POST['category']);
+    $basePrice = floatval($_POST['base_price']);
+    $duration = intval($_POST['duration_days']);
+    $features = sanitize($_POST['features']);
+    
+    $stmt = $conn->prepare("UPDATE services SET name = ?, description = ?, category = ?, base_price = ?, duration_days = ?, features = ? WHERE id = ?");
+    if ($stmt->execute([$name, $description, $category, $basePrice, $duration, $features, $serviceId])) {
+        $success = 'Service updated successfully';
+    }
+}
+
 // Handle status update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $serviceId = intval($_POST['service_id']);
@@ -88,7 +104,8 @@ require_once __DIR__ . '/../includes/header.php';
                             <?= ucfirst($service['status']) ?>
                         </span>
                     </td>
-                    <td class="px-6 py-4 text-center">
+                    <td class="px-6 py-4 text-center space-x-2">
+                        <button onclick='openEditModal(<?= json_encode($service) ?>)' class="text-blue-600 hover:underline text-sm">Edit</button>
                         <form method="POST" class="inline">
                             <input type="hidden" name="update_status" value="1">
                             <input type="hidden" name="service_id" value="<?= $service['id'] ?>">
@@ -156,5 +173,75 @@ require_once __DIR__ . '/../includes/header.php';
         </form>
     </div>
 </div>
+
+<!-- Edit Service Modal -->
+<div id="editServiceModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-full max-w-lg mx-4">
+        <h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-blue-600 mr-2"></i>Edit Service</h3>
+        <form method="POST">
+            <input type="hidden" name="edit_service" value="1">
+            <input type="hidden" name="service_id" id="editServiceId">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Service Name *</label>
+                    <input type="text" name="name" id="editName" required class="w-full px-4 py-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" id="editDescription" rows="2" class="w-full px-4 py-2 border rounded-lg"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                        <select name="category" id="editCategory" required class="w-full px-4 py-2 border rounded-lg">
+                            <option value="Web Development">Web Development</option>
+                            <option value="Mobile Development">Mobile Development</option>
+                            <option value="Graphics Design">Graphics Design</option>
+                            <option value="Digital Marketing">Digital Marketing</option>
+                            <option value="Consultation">Consultation</option>
+                            <option value="Hosting">Hosting</option>
+                            <option value="Maintenance">Maintenance</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Duration (days) *</label>
+                        <input type="number" name="duration_days" id="editDuration" required min="1" class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Base Price (TZS) *</label>
+                    <input type="number" name="base_price" id="editPrice" required min="0" step="0.01" class="w-full px-4 py-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Features (comma-separated)</label>
+                    <input type="text" name="features" id="editFeatures" class="w-full px-4 py-2 border rounded-lg">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 mt-6">
+                <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><i class="fas fa-save mr-2"></i>Update Service</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openEditModal(service) {
+    document.getElementById('editServiceId').value = service.id;
+    document.getElementById('editName').value = service.name;
+    document.getElementById('editDescription').value = service.description || '';
+    document.getElementById('editCategory').value = service.category;
+    document.getElementById('editDuration').value = service.duration_days;
+    document.getElementById('editPrice').value = service.base_price;
+    document.getElementById('editFeatures').value = service.features || '';
+    document.getElementById('editServiceModal').classList.remove('hidden');
+    document.getElementById('editServiceModal').classList.add('flex');
+}
+
+function closeEditModal() {
+    document.getElementById('editServiceModal').classList.add('hidden');
+    document.getElementById('editServiceModal').classList.remove('flex');
+}
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

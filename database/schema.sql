@@ -224,16 +224,8 @@ CREATE TABLE activity_log (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Insert Default Users (passwords: admin123, manager123, acc123, hr123, super123, it123, junior123)
--- All passwords below are bcrypt hashes
-INSERT INTO users (name, email, password, phone, role, department, salary) VALUES
-('John Mwamba', 'admin@phidtech.com', '$2y$10$YourHashHere1234567890abcdefghijklmnopqrstuvwxyzABCD', '+255700000001', 'ceo', 'Executive', 5000000),
-('Sarah Kimaro', 'manager@phidtech.com', '$2y$10$YourHashHere1234567890abcdefghijklmnopqrstuvwxyzABCD', '+255700000002', 'manager', 'Operations', 3000000),
-('Peter Msemwa', 'accountant@phidtech.com', '$2y$10$YourHashHere1234567890abcdefghijklmnopqrstuvwxyzABCD', '+255700000003', 'accountant', 'Finance', 2500000),
-('Grace Mushi', 'hr@phidtech.com', '$2y$10$YourHashHere1234567890abcdefghijklmnopqrstuvwxyzABCD', '+255700000004', 'hr', 'Human Resources', 2500000),
-('James Njau', 'supervisor@phidtech.com', '$2y$10$YourHashHere1234567890abcdefghijklmnopqrstuvwxyzABCD', '+255700000005', 'supervisor', 'IT', 2000000),
-('Alice Kapinga', 'it@phidtech.com', '$2y$10$YourHashHere1234567890abcdefghijklmnopqrstuvwxyzABCD', '+255700000006', 'it_staff', 'IT', 1500000),
-('Michael Swai', 'junior@phidtech.com', '$2y$10$YourHashHere1234567890abcdefghijklmnopqrstuvwxyzABCD', '+255700000007', 'junior_staff', 'IT', 800000);
+-- NOTE: Default users are created via database/install.php with proper password hashing
+-- Do NOT insert users directly with plain SQL - use the install.php script instead
 
 -- Insert Default Services
 INSERT INTO services (name, description, category, base_price, duration_days, features) VALUES

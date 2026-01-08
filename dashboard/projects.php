@@ -1,4 +1,8 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 $pageTitle = 'Projects';
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
@@ -11,6 +15,14 @@ if (!isLoggedIn() || $_SESSION['user_role'] === ROLE_CUSTOMER) {
 $db = new Database();
 $conn = $db->getConnection();
 $notifier = new NotificationService($conn);
+
+// Ensure service_name column exists
+try {
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $conn->query("SELECT service_name FROM projects LIMIT 1");
+} catch (PDOException $e) {
+    $conn->query("ALTER TABLE projects ADD COLUMN service_name VARCHAR(255) DEFAULT NULL");
+}
 
 $success = '';
 $error = '';
@@ -37,6 +49,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     }
 }
 
+// Handle create project
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_project'])) {
+    if (hasRole([ROLE_CEO, ROLE_MANAGER])) {
+        $customerId = intval($_POST['customer_id']);
+        $serviceName = sanitize($_POST['service_name']);
+        $title = sanitize($_POST['title']);
+        $description = sanitize($_POST['description']);
+        $requirements = sanitize($_POST['requirements']);
+        $dueDate = sanitize($_POST['due_date']);
+        
+        // Generate reference
+        $reference = 'PRJ-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+        
+        $stmt = $conn->prepare("INSERT INTO projects (reference, customer_id, service_name, title, description, requirements, due_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')");
+        
+        if ($stmt->execute([$reference, $customerId, $serviceName, $title, $description, $requirements, $dueDate])) {
+            $success = 'Project created successfully! Reference: ' . $reference;
+        } else {
+            $error = 'Failed to create project';
+        }
+    }
+}
+
 // Handle assignment
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_project'])) {
     if (hasRole([ROLE_CEO, ROLE_MANAGER])) {
@@ -59,22 +94,53 @@ elseif ($filter === 'completed') $where = "p.status = 'completed'";
 elseif ($filter === 'my') $where = "p.assigned_to = " . $_SESSION['user_id'];
 
 // Get projects
-$stmt = $conn->query("
-    SELECT p.*, s.name as service_name, 
-           c.name as customer_name, c.email as customer_email,
-           a.name as assigned_name
-    FROM projects p 
-    JOIN services s ON p.service_id = s.id 
-    JOIN users c ON p.customer_id = c.id 
-    LEFT JOIN users a ON p.assigned_to = a.id
-    WHERE $where
-    ORDER BY p.created_at DESC
-");
-$projects = $stmt->fetchAll();
+$projects = [];
+try {
+    $stmt = $conn->query("
+        SELECT p.*, 
+               COALESCE(p.service_name, s.name) as service_display,
+               c.name as customer_name, c.email as customer_email,
+               a.name as assigned_name
+        FROM projects p 
+        LEFT JOIN services s ON p.service_id = s.id 
+        JOIN users c ON p.customer_id = c.id 
+        LEFT JOIN users a ON p.assigned_to = a.id
+        WHERE $where
+        ORDER BY p.created_at DESC
+    ");
+    $projects = $stmt->fetchAll();
+} catch (PDOException $e) {
+    // Fallback query without services table
+    $stmt = $conn->query("
+        SELECT p.*, 
+               p.service_name as service_display,
+               c.name as customer_name, c.email as customer_email,
+               a.name as assigned_name
+        FROM projects p 
+        JOIN users c ON p.customer_id = c.id 
+        LEFT JOIN users a ON p.assigned_to = a.id
+        WHERE $where
+        ORDER BY p.created_at DESC
+    ");
+    $projects = $stmt->fetchAll();
+}
 
 // Get staff for assignment
 $stmt = $conn->query("SELECT id, name, role FROM users WHERE role NOT IN ('customer') AND status = 'active' ORDER BY name");
 $staff = $stmt->fetchAll();
+
+// Get customers for create project
+$stmt = $conn->query("SELECT id, name, email FROM users WHERE role = 'customer' AND status = 'active' ORDER BY name");
+$customers = $stmt->fetchAll();
+
+// Get services for create project (if table exists)
+$services = [];
+try {
+    $stmt = $conn->query("SELECT id, name, base_price, duration_days FROM services WHERE status = 'active' ORDER BY name");
+    $services = $stmt->fetchAll();
+} catch (PDOException $e) {
+    // Services table might not exist
+}
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -87,6 +153,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Filters -->
 <div class="bg-white rounded-xl shadow-md p-4 mb-6">
+    <div class="flex flex-col lg:flex-row gap-4 items-center justify-between">
     <div class="flex flex-wrap gap-2">
         <a href="?filter=all" class="px-4 py-2 rounded-lg <?= $filter === 'all' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' ?>">
             All Projects
@@ -104,18 +171,32 @@ require_once __DIR__ . '/../includes/header.php';
             Assigned to Me
         </a>
     </div>
+    <div class="flex items-center gap-3">
+        <div class="relative">
+            <input type="text" id="projectSearch" placeholder="Search projects..." 
+                   class="w-64 pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                   onkeyup="searchProjects()">
+            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+        </div>
+    <?php if (hasRole([ROLE_CEO, ROLE_MANAGER])): ?>
+    <button onclick="openCreateModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center">
+        <i class="fas fa-plus mr-2"></i>Create Project
+    </button>
+    <?php endif; ?>
+    </div>
+    </div>
 </div>
 
 <!-- Projects Table -->
 <div class="bg-white rounded-xl shadow-md overflow-hidden">
     <div class="overflow-x-auto">
-        <table class="w-full">
+        <table class="w-full" id="projectsTable">
             <thead class="bg-gray-50">
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -129,17 +210,14 @@ require_once __DIR__ . '/../includes/header.php';
                     </td>
                     <td class="px-6 py-4">
                         <p class="font-medium text-gray-800"><?= htmlspecialchars($project['title']) ?></p>
-                        <p class="text-sm text-gray-500"><?= htmlspecialchars($project['service_name']) ?></p>
+                        <p class="text-sm text-gray-500"><?= htmlspecialchars($project['service_display'] ?? '-') ?></p>
                     </td>
                     <td class="px-6 py-4">
                         <p class="text-gray-800"><?= htmlspecialchars($project['customer_name']) ?></p>
                         <p class="text-sm text-gray-500"><?= htmlspecialchars($project['customer_email']) ?></p>
                     </td>
                     <td class="px-6 py-4">
-                        <p class="font-medium"><?= formatCurrency($project['total_amount']) ?></p>
-                        <p class="text-sm <?= $project['paid_amount'] >= $project['total_amount'] ? 'text-green-600' : 'text-red-500' ?>">
-                            Paid: <?= formatCurrency($project['paid_amount']) ?>
-                        </p>
+                        <p class="font-medium"><?= $project['due_date'] ? formatDate($project['due_date']) : '-' ?></p>
                     </td>
                     <td class="px-6 py-4">
                         <?php if ($project['assigned_name']): ?>
@@ -212,6 +290,53 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
+<!-- Create Project Modal -->
+<div id="createModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
+    <div class="bg-white rounded-xl p-6 w-full max-w-2xl my-8 mx-4">
+        <h3 class="text-lg font-bold mb-4"><i class="fas fa-plus-circle text-green-600 mr-2"></i>Create New Project</h3>
+        <form method="POST">
+            <input type="hidden" name="create_project" value="1">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Customer *</label>
+                    <select name="customer_id" required class="w-full px-4 py-2 border rounded-lg">
+                        <option value="">Select Customer...</option>
+                        <?php foreach ($customers as $customer): ?>
+                        <option value="<?= $customer['id'] ?>"><?= htmlspecialchars($customer['name']) ?> (<?= $customer['email'] ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Service/Product *</label>
+                    <input type="text" name="service_name" required class="w-full px-4 py-2 border rounded-lg" placeholder="Enter service or product name">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Project Title *</label>
+                    <input type="text" name="title" required class="w-full px-4 py-2 border rounded-lg" placeholder="Enter project title">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Due Date *</label>
+                    <input type="date" name="due_date" required class="w-full px-4 py-2 border rounded-lg">
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea name="description" rows="3" class="w-full px-4 py-2 border rounded-lg" placeholder="Project description"></textarea>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Requirements</label>
+                <textarea name="requirements" rows="3" class="w-full px-4 py-2 border rounded-lg" placeholder="Project requirements"></textarea>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="closeCreateModal()" class="px-4 py-2 bg-gray-200 rounded-lg">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"><i class="fas fa-save mr-2"></i>Create Project</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Status Modal -->
 <div id="statusModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
     <div class="bg-white rounded-xl p-6 w-full max-w-md">
@@ -261,6 +386,27 @@ function openStatusModal(id, currentStatus) {
 function closeStatusModal() {
     document.getElementById('statusModal').classList.add('hidden');
     document.getElementById('statusModal').classList.remove('flex');
+}
+
+function openCreateModal() {
+    document.getElementById('createModal').classList.remove('hidden');
+    document.getElementById('createModal').classList.add('flex');
+}
+
+function closeCreateModal() {
+    document.getElementById('createModal').classList.add('hidden');
+    document.getElementById('createModal').classList.remove('flex');
+}
+
+function searchProjects() {
+    const searchTerm = document.getElementById('projectSearch').value.toLowerCase();
+    const table = document.getElementById('projectsTable');
+    const rows = table.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
 }
 </script>
 

@@ -1,0 +1,7 @@
+{
+    "name": "phidtech/website",
+    "description": "PhidTech Website with Selcom Payment Integration",
+    "require": {
+        "selcom/selcom-apigw-client": "^1.0"
+    }
+}

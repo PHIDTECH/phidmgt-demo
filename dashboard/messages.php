@@ -1,15 +1,39 @@
 <?php
 $pageTitle = 'Messages';
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/notifications.php';
 
-if (!isLoggedIn() || $_SESSION['user_role'] === ROLE_CUSTOMER) {
+if (!isLoggedIn()) {
     redirect('/auth/login.php');
 }
 
 $db = new Database();
 $conn = $db->getConnection();
+
+// Ensure messages table exists
+try {
+    $conn->exec("CREATE TABLE IF NOT EXISTS messages (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        sender_id INT,
+        recipient_id INT NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        type ENUM('notification', 'task', 'payment', 'project', 'leave', 'general', 'chat') DEFAULT 'general',
+        reference_type VARCHAR(50),
+        reference_id INT,
+        is_read TINYINT(1) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_recipient (recipient_id),
+        INDEX idx_is_read (is_read)
+    )");
+} catch (PDOException $e) {
+    // Table already exists, ignore
+}
+
 $notifier = new NotificationService($conn);
 
 $success = '';
@@ -36,13 +60,20 @@ if (isset($_GET['mark_all_read'])) {
     redirect('/dashboard/messages.php');
 }
 
-// Get messages
-$messages = $notifier->getMessages($_SESSION['user_id'], 100);
+// Get messages - pass user role so admin can see all, others see only their own
+$messages = $notifier->getMessages($_SESSION['user_id'], 100, false, $_SESSION['user_role']);
 $unreadCount = $notifier->getUnreadCount($_SESSION['user_id']);
 
-// Get staff for sending messages
-$stmt = $conn->query("SELECT id, name, role FROM users WHERE role != 'customer' AND status = 'active' ORDER BY name");
-$staff = $stmt->fetchAll();
+// Get all users for sending messages (staff can message anyone, customers can only message staff)
+$isCustomer = ($_SESSION['user_role'] === ROLE_CUSTOMER);
+if ($isCustomer) {
+    // Customers can only message staff
+    $stmt = $conn->query("SELECT id, name, role FROM users WHERE role != 'customer' AND status = 'active' ORDER BY name");
+} else {
+    // Staff can message everyone (staff + customers)
+    $stmt = $conn->query("SELECT id, name, role FROM users WHERE status = 'active' ORDER BY role, name");
+}
+$recipients = $stmt->fetchAll();
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -135,11 +166,21 @@ require_once __DIR__ . '/../includes/header.php';
                     <label class="block text-sm font-medium text-gray-700 mb-1">To *</label>
                     <select name="recipient_id" required class="w-full px-4 py-2 border rounded-lg">
                         <option value="">Select recipient...</option>
-                        <?php foreach ($staff as $member): ?>
-                        <?php if ($member['id'] != $_SESSION['user_id']): ?>
-                        <option value="<?= $member['id'] ?>"><?= htmlspecialchars($member['name']) ?> (<?= ucfirst(str_replace('_', ' ', $member['role'])) ?>)</option>
-                        <?php endif; ?>
+                        <?php 
+                        $currentRole = '';
+                        foreach ($recipients as $member): 
+                            if ($member['id'] == $_SESSION['user_id']) continue;
+                            // Group by role
+                            $roleLabel = ucfirst(str_replace('_', ' ', $member['role']));
+                            if ($member['role'] !== $currentRole) {
+                                if ($currentRole !== '') echo '</optgroup>';
+                                echo '<optgroup label="' . $roleLabel . 's">';
+                                $currentRole = $member['role'];
+                            }
+                        ?>
+                        <option value="<?= $member['id'] ?>"><?= htmlspecialchars($member['name']) ?></option>
                         <?php endforeach; ?>
+                        <?php if ($currentRole !== '') echo '</optgroup>'; ?>
                     </select>
                 </div>
                 <div>

@@ -1,8 +1,11 @@
 <?php
 session_start();
 
-define('SITE_NAME', 'PhidTech Solutions');
-define('SITE_URL', 'http://localhost:8000');
+define('SITE_NAME', 'Your Company Name');  // Change this to your company name
+// Auto-detect site URL based on environment
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost:8000';
+define('SITE_URL', $protocol . $host);
 define('UPLOAD_PATH', __DIR__ . '/../uploads/');
 
 // User Roles
